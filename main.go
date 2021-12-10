@@ -1,85 +1,72 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/mattermost/mattermost-server/v6/model"
-	"os"
-	"os/signal"
+	"io/ioutil"
 )
 
-const (
-	NAME = "bot_Mattermost"
+const URL = "http://localhost:8065"
 
-	USER_EMAIL    = "bot@example.com"
-	USER_PASSWORD = "P*ssw0rd02"
-	USER_NAME     = "bot_Mattermost"
+type Bot struct {
+	UserEmail    string `json:"UserEmail"`
+	UserPassword string `json:"UserPassword"`
+	TeamName     string `json:"TeamName"`
+	ChannelName  string `json:"ChannelName"`
+}
 
-	USER_FIRST = "bot"
-	USER_LAST  = "Mattermost"
-
-	TEAM_NAME        = "evren"
-	CHANNEL_LOG_NAME = "evren"
-
-	URL = "http://localhost:8065"
-)
-
+var bot Bot
 var client *model.Client4
-var webSocketClient *model.WebSocketClient
-
-var botUser *model.User
 var botTeam *model.Team
 var debuggingChannel *model.Channel
 
-type MyStruct struct {
-	Id        string `json:"id"`
-	Name      string `json:"name"`
-	UserId    string `json:"user_id"`
-	CreatedAt int64  `json:"created_at"`
+func init() {
+	file, _ := ioutil.ReadFile("config.json")
+	err := json.Unmarshal(file, &bot)
+	if err != nil {
+		println("Error at init")
+		panic(err)
+	}
 }
 
 func main() {
 	println("Bot is trying to wake up.")
 
-	SetupGracefulShutdown()
-
-	client = model.NewAPIv4Client("http://localhost:8065")
-
+	client = model.NewAPIv4Client(URL)
 	start()
-
-	//SendMsg("Hello Mattermost", debuggingChannel)
-	sendCoolMsg("Evren", "10.12.2021", "20.12.2021")
-	//sendPrivate("eispiroglu")
+	SendMsg(debuggingChannel)
 
 }
-func sendCoolMsg(name string, startD string, finishD string) {
-
+func createTable(name string, department string, startD string, finishD string) string {
 	str := fmt.Sprintf(""+
-		"| Izine ayirilan kisi  | Izin baslangic  | Izin bitis |\n"+
-		"| :----------------- | ----------------- | -----------------: |\n"+
-		"|         %s         |        %s         |         %s         |\n", name, startD, finishD)
-	SendMsg(str, debuggingChannel)
-
+		"| Departman  | Izine ayirilan kisi  | Izin baslangic  | Izin bitis |\n"+
+		"| :-----------------| ----------------- | ----------------- | -----------------: |\n"+
+		"|         %s        |         %s        |        %s         |         %s         |\n", department, name, startD, finishD)
+	return str
 }
-func sendPrivate(userName string) {
-
-	tempUser, _, err := client.GetUserByUsername(userName, "")
-	if err != nil {
-		println("Couldnt get user by username")
-		panic(err)
+func SendMsg(channel *model.Channel) {
+	msg := createTable("Evren Ispiroglu", "bilsiimHR", "10.12.2021", "20.12.2021")
+	slackAttachment := model.SlackAttachment{
+		Text:      msg,
+		Title:     "Evren Ispiroglu",
+		TitleLink: fmt.Sprintf("[HR linki]%s", "meetingUrl"),
 	}
 
-	direct, _, err := client.CreateDirectChannel(tempUser.Id, botUser.Id)
-	if err != nil {
-		println("Couldnt get direct")
-		return
+	post := &model.Post{
+		ChannelId: channel.Id,
+		Message:   "",
+		Props: map[string]interface{}{
+			"attachments":              []*model.SlackAttachment{&slackAttachment},
+			"meetingID":                "meetingID",
+			"meeting_link":             "meetingURL",
+			"meeting_status":           "zoom.WebhookStatusStarted",
+			"meeting_personal":         true,
+			"meeting_topic":            "Izin'e Ayrılma !!",
+			"meeting_creator_username": "creator.Username",
+			"meeting_provider":         "zoomProviderName",
+		},
 	}
-	SendMsg(tempUser.Username+" Izin Aldi", direct)
-
-}
-func SendMsg(msg string, channel *model.Channel) {
-	post := &model.Post{}
-	post.ChannelId = channel.Id
-	post.Message = msg
 
 	_, _, err := client.CreatePost(post)
 	if err != nil {
@@ -87,74 +74,34 @@ func SendMsg(msg string, channel *model.Channel) {
 		panic(err)
 	}
 }
-
 func start() {
-	MakeSureServerIsRunning()
 	LoginAsUser()
 	FindBotTeam()
 	CreateBotDebuggingChannelIfNeeded()
 }
 func LoginAsUser() {
-	user, _, err := client.Login(USER_EMAIL, USER_PASSWORD)
+	_, _, err := client.Login(bot.UserEmail, bot.UserPassword)
 	if err != nil {
 		println("Couldnt login")
 		panic(err)
 	}
-	botUser = user
 }
 func CreateBotDebuggingChannelIfNeeded() {
-	if rchannel, _, err := client.GetChannelByName(CHANNEL_LOG_NAME, botTeam.Id, ""); err != nil {
+	if rchannel, _, err := client.GetChannelByName(bot.ChannelName, botTeam.Id, ""); err != nil {
 		println("We failed to get the channels")
 		panic(err)
 	} else {
 		debuggingChannel = rchannel
 		return
 	}
-
-	// Looks like we need to create the logging channel
-	channel := &model.Channel{}
-	channel.Name = CHANNEL_LOG_NAME
-	channel.DisplayName = "Debugging For Sample Bot"
-	channel.Purpose = "This is used as a test channel for logging bot debug messages"
-	channel.Type = model.ChannelTypeOpen
-	channel.TeamId = botTeam.Id
-	if rchannel, _, err := client.CreateChannel(channel); err != nil {
-		println("We failed to create the channel " + CHANNEL_LOG_NAME)
-		panic(err)
-	} else {
-		debuggingChannel = rchannel
-		println("Looks like this might be the first run so we've created the channel " + CHANNEL_LOG_NAME)
-	}
 }
 func FindBotTeam() {
-	if team, _, err := client.GetTeamByName(TEAM_NAME, ""); err != nil {
+	if team, _, err := client.GetTeamByName(bot.TeamName, ""); err != nil {
 		println("We failed to get the initial load")
-		println("or we do not appear to be a member of the team '" + TEAM_NAME + "'")
+		println("or we do not appear to be a member of the team '" + bot.TeamName + "'")
 		panic(err)
 		//os.Exit(1)
 	} else {
 		botTeam = team
-	}
-}
-func SetupGracefulShutdown() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for _ = range c {
-			if webSocketClient != nil {
-				webSocketClient.Close()
-			}
-
-			SendMsg("_"+NAME+" has **stopped** running_", debuggingChannel)
-			os.Exit(0)
-		}
-	}()
-}
-func MakeSureServerIsRunning() {
-	if props, _, err := client.GetOldClientConfig(""); err != nil {
-		println("There was a problem pinging the Mattermost server.  Are you sure it's running?")
-		panic(err)
-	} else {
-		println("Server detected and is running version " + props["Version"])
 	}
 }
