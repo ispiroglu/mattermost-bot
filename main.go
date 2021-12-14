@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 )
 
 const URL = "http://localhost:8065"
@@ -70,7 +69,7 @@ func run() {
 	getStartDate()
 	getEndDate()
 	getDepartmanVal()
-	saveFile()
+	//saveFile()
 	sendWebHook()
 }
 func sendWebHook() {
@@ -88,23 +87,14 @@ func sendWebHook() {
 }
 
 func readFile() *bytes.Buffer {
-	temp, err := ioutil.ReadFile("msg.json")
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(post)
 	if err != nil {
-		println("Couldnt read file")
+		println("Coulnt encode")
 		panic(err)
 	}
-	return bytes.NewBuffer(temp)
+	return &buf
 }
-
-func saveFile() {
-	temp1, _ := json.Marshal(post)
-	err := ioutil.WriteFile("msg.json", temp1, os.ModePerm)
-	if err != nil {
-		println("Couldnt write file")
-		panic(err)
-	}
-}
-
 func getDepartmanVal() {
 	println("Departman")
 	_, _ = fmt.Scanln(&tmp)
