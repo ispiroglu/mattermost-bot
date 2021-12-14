@@ -1,29 +1,60 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/mattermost/mattermost-server/v6/model"
 	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
 )
 
 const URL = "http://localhost:8065"
 
+/*
 type Bot struct {
 	UserEmail    string `json:"UserEmail"`
 	UserPassword string `json:"UserPassword"`
 	TeamName     string `json:"TeamName"`
 	ChannelName  string `json:"ChannelName"`
 }
+*/
 
+type Post struct {
+	Channel     string `json:"channel"`
+	Message     string `json:"message"`
+	Attachments []struct {
+		Fallback   string `json:"fallback"`
+		Color      string `json:"color"`
+		Pretext    string `json:"pretext"`
+		AuthorName string `json:"author_name"`
+		AuthorIcon string `json:"author_icon"`
+		AuthorLink string `json:"author_link"`
+		Title      string `json:"title"`
+		TitleLink  string `json:"title_link"`
+		Fields     []struct {
+			Short bool   `json:"short"`
+			Title string `json:"title"`
+			Value string `json:"value"`
+		} `json:"fields"`
+		ImageUrl string `json:"image_url"`
+	} `json:"attachments"`
+}
+
+var tmp string
+var post Post
+
+/*
 var bot Bot
+var post Post
 var client *model.Client4
 var botTeam *model.Team
-var debuggingChannel *model.Channel
+var debuggingChannel *model.Channel*/
 
 func init() {
-	file, _ := ioutil.ReadFile("config.json")
-	err := json.Unmarshal(file, &bot)
+	file2, err := ioutil.ReadFile("msg.json")
+	err = json.Unmarshal(file2, &post)
 	if err != nil {
 		println("Error at init")
 		panic(err)
@@ -32,12 +63,73 @@ func init() {
 
 func main() {
 	println("Bot is trying to wake up.")
-
-	client = model.NewAPIv4Client(URL)
-	start()
-	SendMsg(debuggingChannel)
-
+	run()
 }
+func run() {
+	whoGotPermit()
+	getStartDate()
+	getEndDate()
+	getDepartmanVal()
+	saveFile()
+	sendWebHook()
+}
+func sendWebHook() {
+	resp, err := http.Post(URL+"/hooks/yt44wgr6tbfc88pfnwy7anj8ec", "application/json", readFile())
+	if err != nil {
+		log.Fatalf("An Error Occured %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	sb := string(body)
+	log.Printf(sb)
+}
+
+func readFile() *bytes.Buffer {
+	temp, err := ioutil.ReadFile("msg.json")
+	if err != nil {
+		println("Couldnt read file")
+		panic(err)
+	}
+	return bytes.NewBuffer(temp)
+}
+
+func saveFile() {
+	temp1, _ := json.Marshal(post)
+	err := ioutil.WriteFile("msg.json", temp1, os.ModePerm)
+	if err != nil {
+		println("Couldnt write file")
+		panic(err)
+	}
+}
+
+func getDepartmanVal() {
+	println("Departman")
+	_, _ = fmt.Scanln(&tmp)
+	post.Attachments[0].Fields[3].Value = tmp
+}
+
+func getStartDate() {
+	println("Izin baslangic tarihi")
+	_, _ = fmt.Scanln(&tmp)
+	post.Attachments[0].Fields[1].Value = tmp
+}
+
+func getEndDate() {
+	println("Izin bitis tarihi")
+	_, _ = fmt.Scanln(&tmp)
+	post.Attachments[0].Fields[2].Value = tmp
+}
+
+func whoGotPermit() {
+	println("Izin alan kisi")
+	_, _ = fmt.Scanln(&tmp)
+	post.Attachments[0].Fields[0].Value = tmp
+}
+
+/*
 func createTable(name string, department string, startD string, finishD string) string {
 	str := fmt.Sprintf(""+
 		"| Departman  | Izine ayirilan kisi  | Izin baslangic  | Izin bitis |\n"+
@@ -45,34 +137,23 @@ func createTable(name string, department string, startD string, finishD string) 
 		"|         %s        |         %s        |        %s         |         %s         |\n", department, name, startD, finishD)
 	return str
 }
-func SendMsg(channel *model.Channel) {
+func SendMsg(channel *model.Channel) model.SlackAttachment {
 	msg := createTable("Evren Ispiroglu", "bilsiimHR", "10.12.2021", "20.12.2021")
-	slackAttachment := model.SlackAttachment{
-		Text:      msg,
-		Title:     "Evren Ispiroglu",
-		TitleLink: fmt.Sprintf("[HR linki]%s", "meetingUrl"),
-	}
 
-	post := &model.Post{
-		ChannelId: channel.Id,
-		Message:   "",
-		Props: map[string]interface{}{
-			"attachments":              []*model.SlackAttachment{&slackAttachment},
-			"meetingID":                "meetingID",
-			"meeting_link":             "meetingURL",
-			"meeting_status":           "zoom.WebhookStatusStarted",
-			"meeting_personal":         true,
-			"meeting_topic":            "Izin'e Ayrılma !!",
-			"meeting_creator_username": "creator.Username",
-			"meeting_provider":         "zoomProviderName",
-		},
+	post.Attachments{
+		Title,
 	}
+}
+func EncodeToBytes(p interface{}) []byte {
 
-	_, _, err := client.CreatePost(post)
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(p)
 	if err != nil {
-		println("Couldnt create post")
-		panic(err)
+		log.Fatal(err)
 	}
+	fmt.Println("uncompressed size (bytes): ", len(buf.Bytes()))
+	return buf.Bytes()
 }
 func start() {
 	LoginAsUser()
@@ -100,8 +181,9 @@ func FindBotTeam() {
 		println("We failed to get the initial load")
 		println("or we do not appear to be a member of the team '" + bot.TeamName + "'")
 		panic(err)
-		//os.Exit(1)
+		os.Exit(1)
 	} else {
 		botTeam = team
 	}
 }
+*/
